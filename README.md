@@ -2,7 +2,9 @@
 
 ## Overview
 
-gitmproxy is a lightweight MITM (Man-In-The-Middle) proxy designed for debugging, inspecting, and modifying HTTP(S) traffic. It is built for developers and testers who need to analyze and manipulate network requests and responses.
+gitmproxy is a lightweight MITM (Man-In-The-Middle) HTTP cache proxy designed for
+caching HTTP(S) traffic for slow internet/network connections.
+
 
 ## Configuration Environment Variables
 
