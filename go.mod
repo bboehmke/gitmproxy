@@ -1,4 +1,4 @@
-module httpproxy
+module github.com/bboehmke/gitmproxy
 
 go 1.24.3
 
