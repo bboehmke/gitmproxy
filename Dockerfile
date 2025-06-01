@@ -14,4 +14,4 @@ EXPOSE 8090
 VOLUME ["/data"]
 WORKDIR "/data"
 
-ENTRYPOINT "/gitmproxy"
+ENTRYPOINT ["/gitmproxy"]
