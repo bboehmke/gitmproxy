@@ -41,12 +41,13 @@ func (b *ByteSize) UnmarshalText(data []byte) error {
 
 // Config holds the configuration for the cache system.
 type Config struct {
-	ListenAddr    string        `env:"LISTEN_ADDR" envDefault:":8090"`
-	CacheDir      string        `env:"CACHE_DIR" envDefault:"cache"`      // directory where cache files are stored
-	MaxSize       ByteSize      `env:"MAX_SIZE" envDefault:"10GB"`        // maximum size (in bytes) used for cache storage, 0 means unlimited
-	EntryMaxSize  ByteSize      `env:"ENTRY_MAX_SIZE" envDefault:"500MB"` // maximum size (in bytes) for a single cached response, 0 means unlimited
-	EntryTTL      time.Duration `env:"ENTRY_TTL" envDefault:"1h"`         // time-to-live for each cache entry, 0 means no expiration
-	EnableLogging bool          `env:"ENABLE_LOGGING" envDefault:"true"`  // whether to enable logging of cache operations
+	ListenAddr               string        `env:"LISTEN_ADDR" envDefault:":8090"`
+	CacheDir                 string        `env:"CACHE_DIR" envDefault:"cache"`                   // directory where cache files are stored
+	MaxSize                  ByteSize      `env:"MAX_SIZE" envDefault:"10GB"`                     // maximum size (in bytes) used for cache storage, 0 means unlimited
+	EntryMaxSize             ByteSize      `env:"ENTRY_MAX_SIZE" envDefault:"500MB"`              // maximum size (in bytes) for a single cached response, 0 means unlimited
+	EntryTTL                 time.Duration `env:"ENTRY_TTL" envDefault:"1h"`                      // time-to-live for each cache entry, 0 means no expiration
+	EnableLogging            bool          `env:"ENABLE_LOGGING" envDefault:"true"`               // whether to enable logging of cache operations
+	IgnoreServerCacheControl bool          `env:"IGNORE_SERVER_CACHE_CONTROL" envDefault:"false"` // whether to ignore cache control headers from the server
 }
 
 func (c *Config) Print() {
@@ -57,4 +58,5 @@ func (c *Config) Print() {
 	log.Info("  EntryMaxSize: %s", humanize.IBytes(uint64(c.EntryMaxSize)))
 	log.Info("  EntryTTL: %s", c.EntryTTL)
 	log.Info("  EnableLogging: %t", c.EnableLogging)
+	log.Info("  IgnoreServerCacheControl: %t", c.IgnoreServerCacheControl)
 }

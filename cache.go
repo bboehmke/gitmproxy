@@ -229,6 +229,19 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 		return origResp, err
 	}
 
+	// handle cache control headers
+	if !c.config.IgnoreServerCacheControl {
+		cacheControl := req.Header.Get("Cache-Control")
+		if cacheControl != "" {
+			if strings.Contains(cacheControl, "no-cache") || strings.Contains(cacheControl, "no-store") || strings.Contains(cacheControl, "max-age=0") {
+				if c.config.EnableLogging {
+					log.Printf("cache control ignore: %s %s", req.Method, req.URL.String())
+				}
+				return origResp, err
+			}
+		}
+	}
+
 	// if response indicates not modified, update modification time
 	if origResp.StatusCode == http.StatusNotModified {
 		now := time.Now()
@@ -262,7 +275,7 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 // If multiple requests for the same URL come in concurrently, only one will download the file.
 func (c *DiskCache) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Method != http.MethodGet {
-		return c.transport.RoundTrip(req)
+		return c.transport.RoundTrip(req) // bypass cache
 	}
 	inflightKey := req.URL.String()
 
