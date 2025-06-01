@@ -50,16 +50,17 @@ func main() {
 	config.Print()
 
 	// Initialize the disk cache
-	diskCache, err := NewDiskCache(config)
+	diskCache, err := NewDiskCache(config,
+		&http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Create an HTTP client with the disk cache transport
 	client := http.Client{
-		Transport: NewCacheTransport(diskCache, &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}),
+		Transport: diskCache,
 	}
 
 	// resolve TCP address for the proxy to listen on

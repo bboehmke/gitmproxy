@@ -28,16 +28,19 @@ type DiskCache struct {
 	// Prevent concurrent downloads of the same cache key
 	downloadMu sync.Mutex
 	inflight   map[string]*sync.WaitGroup
+
+	transport http.RoundTripper
 }
 
 // NewDiskCache creates a new DiskCache storing responses on the file system.
-func NewDiskCache(config Config) (*DiskCache, error) {
+func NewDiskCache(config Config, transport http.RoundTripper) (*DiskCache, error) {
 	if err := os.MkdirAll(config.CacheDir, 0755); err != nil {
 		return nil, err
 	}
 	c := &DiskCache{
-		config:   config,
-		inflight: make(map[string]*sync.WaitGroup),
+		config:    config,
+		inflight:  make(map[string]*sync.WaitGroup),
+		transport: transport,
 	}
 
 	// Initialize current size
@@ -224,4 +227,84 @@ func (c *DiskCache) evictOne() (bool, int64, error) {
 		log.Printf("cache DELETE: %s", oldestPath)
 	}
 	return true, size, nil
+}
+
+// doSingleflightDownload performs the download, cache, and returns the response for a cache miss.
+// It handles inflight map cleanup and wg.Done().
+// If the response is too large to cache (by ContentLength), it is returned directly and not stored.
+func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string, wg *sync.WaitGroup) (*http.Response, error) {
+	defer func() {
+		c.downloadMu.Lock()
+		delete(c.inflight, inflightKey)
+		wg.Done()
+		c.downloadMu.Unlock()
+	}()
+
+	// Download the response body
+	origResp, err := c.transport.RoundTrip(req)
+	if err != nil || origResp == nil {
+		return origResp, err
+	}
+
+	// Only check the limit if ContentLength is given (>= 0).
+	if c.config.EntryMaxSize > 0 && origResp.ContentLength > int64(c.config.EntryMaxSize) && origResp.ContentLength >= 0 {
+		if c.config.EnableLogging {
+			log.Printf("response TOO LARGE to cache: %s %s (Content-Length: %d, Limit: %d)",
+				req.Method, req.URL.String(), origResp.ContentLength, c.config.EntryMaxSize)
+		}
+		return origResp, nil
+	}
+
+	if c.config.EnableLogging {
+		log.Printf("cache MISS: %s %s", req.Method, req.URL.String())
+	}
+	_ = c.Set(req, origResp)
+	origResp.Body.Close()
+	return c.Get(req)
+}
+
+// RoundTrip implements http.RoundTripper. Only GET requests are cached.
+// If multiple requests for the same URL come in concurrently, only one will download the file.
+func (c *DiskCache) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Method != http.MethodGet {
+		return c.transport.RoundTrip(req)
+	}
+	inflightKey := req.URL.String()
+
+	for {
+		resp, err := c.Get(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp != nil {
+			if c.config.EnableLogging {
+				log.Printf("cache HIT: %s %s", req.Method, req.URL.String())
+			}
+			mCacheRequestsTotal.Inc()
+			mCacheRequestsBytes.Add(float64(resp.ContentLength))
+			mCacheRequestsHitTotal.Inc()
+			mCacheRequestsHitBytes.Add(float64(resp.ContentLength))
+			return resp, nil
+		}
+
+		c.downloadMu.Lock()
+		if wg, ok := c.inflight[inflightKey]; ok {
+			c.downloadMu.Unlock()
+			wg.Wait()
+			continue
+		}
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+		c.inflight[inflightKey] = wg
+		c.downloadMu.Unlock()
+
+		resp, err = c.doSingleflightDownload(req, inflightKey, wg)
+		if err == nil {
+			mCacheRequestsTotal.Inc()
+			mCacheRequestsBytes.Add(float64(resp.ContentLength))
+			mCacheRequestsMissTotal.Inc()
+			mCacheRequestsMissBytes.Add(float64(resp.ContentLength))
+		}
+		return resp, err
+	}
 }
