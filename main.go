@@ -92,6 +92,9 @@ func main() {
 				return nil, proxyutil.NewResponse(http.StatusNotFound, nil, req)
 			}
 
+			// count HTTP requests
+			mHttpRequestsTotal.WithLabelValues(req.Method).Add(1)
+
 			// handle only GET requests
 			if req.Method != http.MethodGet {
 				return nil, nil

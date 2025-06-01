@@ -79,10 +79,10 @@ func (t *CacheTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			if t.Cache.config.EnableLogging {
 				log.Printf("cache HIT: %s %s", req.Method, req.URL.String())
 			}
-			mRequestsTotal.Inc()
-			mRequestsBytes.Add(float64(resp.ContentLength))
-			mRequestsHitTotal.Inc()
-			mRequestsHitBytes.Add(float64(resp.ContentLength))
+			mCacheRequestsTotal.Inc()
+			mCacheRequestsBytes.Add(float64(resp.ContentLength))
+			mCacheRequestsHitTotal.Inc()
+			mCacheRequestsHitBytes.Add(float64(resp.ContentLength))
 			return resp, nil
 		}
 
@@ -99,10 +99,10 @@ func (t *CacheTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		resp, err = t.doSingleflightDownload(req, inflightKey, wg)
 		if err == nil {
-			mRequestsTotal.Inc()
-			mRequestsBytes.Add(float64(resp.ContentLength))
-			mRequestsMissTotal.Inc()
-			mRequestsMissBytes.Add(float64(resp.ContentLength))
+			mCacheRequestsTotal.Inc()
+			mCacheRequestsBytes.Add(float64(resp.ContentLength))
+			mCacheRequestsMissTotal.Inc()
+			mCacheRequestsMissBytes.Add(float64(resp.ContentLength))
 		}
 		return resp, err
 	}

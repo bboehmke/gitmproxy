@@ -6,29 +6,34 @@ import (
 )
 
 var (
-	mRequestsTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "gitmproxy_requests_total",
+	mHttpRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "gitmproxy_http_requests_total",
+		Help: "The total number of received requests.",
+	}, []string{"method"})
+
+	mCacheRequestsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "gitmproxy_cache_requests_total",
 		Help: "The total number of received requests.",
 	})
-	mRequestsHitTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "gitmproxy_requests_hits_total",
+	mCacheRequestsHitTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "gitmproxy_cache_requests_hits_total",
 		Help: "The total number of received requests with cache hits.",
 	})
-	mRequestsMissTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "gitmproxy_requests_miss_total",
+	mCacheRequestsMissTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "gitmproxy_cache_requests_miss_total",
 		Help: "The total number of received requests with cache miss.",
 	})
 
-	mRequestsBytes = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "gitmproxy_requests_bytes",
+	mCacheRequestsBytes = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "gitmproxy_cache_requests_bytes",
 		Help: "Amount of handled data.",
 	})
-	mRequestsHitBytes = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "gitmproxy_requests_hit_bytes",
+	mCacheRequestsHitBytes = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "gitmproxy_cache_requests_hit_bytes",
 		Help: "Amount of handled data with cache hit.",
 	})
-	mRequestsMissBytes = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "gitmproxy_requests_miss_bytes",
+	mCacheRequestsMissBytes = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "gitmproxy_cache_requests_miss_bytes",
 		Help: "Amount of handled data with cache miss.",
 	})
 )
