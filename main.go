@@ -17,6 +17,7 @@ import (
 	"github.com/AdguardTeam/gomitmproxy/mitm"
 	"github.com/AdguardTeam/gomitmproxy/proxyutil"
 	"github.com/caarlos0/env/v11"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // initMitm initializes the MITM configuration for the proxy.
@@ -67,6 +68,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Create a handler for the Prometheus metrics endpoint
+	prometheusHandler := promhttp.Handler()
+
 	// Initialize the proxy with the MITM configuration and request handler
 	proxy := gomitmproxy.NewProxy(gomitmproxy.Config{
 		ListenAddr: addr,
@@ -74,6 +78,20 @@ func main() {
 
 		OnRequest: func(session *gomitmproxy.Session) (*http.Request, *http.Response) {
 			req := session.Request()
+
+			// handle metrics endpoint
+			if req.URL.Path == "/_gitmproxy_metrics" {
+				rw := NewResponseWriter()
+				prometheusHandler.ServeHTTP(rw, req)
+				return nil, rw.Response(req)
+			}
+
+			// ignore requests to the proxy itself
+			if strings.HasPrefix(req.URL.Host, "127.0.0.1") || strings.HasPrefix(req.URL.Host, "localhost") {
+				// do not proxy requests to localhost or
+				return nil, proxyutil.NewResponse(http.StatusNotFound, nil, req)
+			}
+
 			// handle only GET requests
 			if req.Method != http.MethodGet {
 				return nil, nil

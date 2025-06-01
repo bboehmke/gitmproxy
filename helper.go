@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 )
 
-// bodyWithFile wraps the http.Response.Body and the file, so that when closed both are closed.
+// bodyWithFile wraps the http.ResponseWriter.Body and the file, so that when closed both are closed.
 type bodyWithFile struct {
 	body io.ReadCloser
 	file *os.File
@@ -60,4 +62,45 @@ func writeResponseToTmpFile(tmpPath string, resp *http.Response) (int64, error) 
 		return 0, err
 	}
 	return cw.count, nil
+}
+
+// ResponseWriter is a custom http.ResponseWriter that captures the response headers and body.
+type ResponseWriter struct {
+	header http.Header
+	buffer bytes.Buffer
+	status int
+}
+
+func NewResponseWriter() *ResponseWriter {
+	return &ResponseWriter{
+		header: make(http.Header),
+		status: http.StatusOK, // Default status code
+	}
+}
+
+func (r *ResponseWriter) Header() http.Header {
+	return r.header
+}
+
+func (r *ResponseWriter) Write(bytes []byte) (int, error) {
+	return r.buffer.Write(bytes)
+}
+
+func (r *ResponseWriter) WriteHeader(statusCode int) {
+	r.status = statusCode
+}
+
+// Response returns an http.Response constructed from the captured data in the ResponseWriter.
+func (r *ResponseWriter) Response(req *http.Request) *http.Response {
+	resp := &http.Response{
+		StatusCode: r.status,
+		Status:     fmt.Sprintf("%d %s", r.status, http.StatusText(r.status)),
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     r.header,
+		Body:       io.NopCloser(&r.buffer),
+		Request:    req,
+	}
+	return resp
 }
