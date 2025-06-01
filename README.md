@@ -18,6 +18,7 @@ The following environment variables can be used to configure gitmproxy:
 | `ENTRY_MAX_SIZE`   | Maximum size for a single cached response (e.g., 500MB) | `500MB`   |
 | `ENTRY_TTL`        | Time-to-live for each cache entry (e.g., 1h, 0 = none)  | `1h`      |
 | `ENABLE_LOGGING`   | Enable logging of cache operations (`true`/`false`)     | `true`    |
+| `IGNORE_SERVER_CACHE_CONTROL` | Ignore cache control headers from the server (`true`/`false`) | `false`   |
 
 ## Getting Started
 
@@ -36,8 +37,17 @@ services:
       ENTRY_MAX_SIZE: "500MB"
       ENTRY_TTL: "1h"
       ENABLE_LOGGING: "true"
+      IGNORE_SERVER_CACHE_CONTROL: "false"
     volumes:
       - ./cache:/cache
 ```
 
 This will start gitmproxy on port 8090 with a persistent cache directory. Adjust environment variables and volume paths as needed for your setup.
+
+## Prometheus Metrics Endpoint
+
+gitmproxy exposes a Prometheus-compatible metrics endpoint at `/_gitmproxy_metrics`.
+
+- You can access metrics by visiting `http://<proxy_host>:<proxy_port>/_gitmproxy_metrics`.
+- This endpoint provides statistics such as HTTP request counts and cache performance.
+- Integrate this endpoint with your Prometheus server for monitoring.
