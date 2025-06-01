@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -19,8 +21,7 @@ import (
 type DiskCache struct {
 	config Config
 
-	mu        sync.RWMutex // guards file system operations to prevent race conditions
-	currSize  int64        // tracked current size, updated on set/delete
+	currSize  atomic.Int64 // tracked current size, updated on set/delete
 	sizeOnce  sync.Once
 	sizeError error
 
@@ -38,6 +39,24 @@ func NewDiskCache(config Config) (*DiskCache, error) {
 		config:   config,
 		inflight: make(map[string]*sync.WaitGroup),
 	}
+
+	// Initialize current size
+	_ = filepath.Walk(c.config.CacheDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			panic(err)
+		}
+		if err == nil && !info.IsDir() {
+			// clean up temporary files
+			if strings.HasSuffix(info.Name(), ".tmp") {
+				os.Remove(path)
+			} else {
+				c.currSize.Add(info.Size())
+			}
+
+		}
+		return nil
+	})
+
 	return c, nil
 }
 
@@ -62,8 +81,6 @@ func (c *DiskCache) Get(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -118,20 +135,16 @@ func (c *DiskCache) Set(req *http.Request, resp *http.Response) error {
 		return err
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	// Ensure quota: evict LRU files until enough space
 	if c.config.MaxSize > 0 {
-		c.ensureCurrSize()
-		for c.currSize+size > int64(c.config.MaxSize) {
+		for c.currSize.Load()+size > int64(c.config.MaxSize) {
 			evicted, freed, err := c.evictOne()
 			if err != nil {
 				// can't evict, either error or nothing to evict
 				break
 			}
 			if evicted {
-				c.currSize -= freed
+				c.subSize(freed)
 			} else {
 				break
 			}
@@ -149,39 +162,19 @@ func (c *DiskCache) Set(req *http.Request, resp *http.Response) error {
 	return nil
 }
 
-// ensureCurrSize calculates the current size of the cache directory.
-func (c *DiskCache) ensureCurrSize() {
-	c.sizeOnce.Do(func() {
-		var size int64
-		_ = filepath.Walk(c.config.CacheDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				panic(err)
-			}
-			if err == nil && !info.IsDir() {
-				size += info.Size()
-			}
-			return nil
-		})
-		c.currSize = size
-	})
-}
-
 // addSize increases the current size of the cache by sz bytes, ensuring it does not exceed cacheMaxSize.
 func (c *DiskCache) addSize(sz int64) {
 	if c.config.MaxSize > 0 {
-		c.ensureCurrSize()
-		c.currSize += sz
+		c.currSize.Add(sz)
 	}
 }
 
 // subSize reduces the current size of the cache by sz bytes, ensuring it does not go below zero.
 func (c *DiskCache) subSize(sz int64) {
 	if c.config.MaxSize > 0 {
-		c.ensureCurrSize()
-		if c.currSize > sz {
-			c.currSize -= sz
-		} else {
-			c.currSize = 0
+		c.currSize.Add(-sz)
+		if c.currSize.Load() < 0 {
+			c.currSize.Store(0)
 		}
 	}
 }
