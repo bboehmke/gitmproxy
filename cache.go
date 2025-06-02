@@ -103,11 +103,6 @@ func (c *DiskCache) Get(req *http.Request) (*http.Response, time.Time, error) {
 		return nil, time.Time{}, err
 	}
 
-	// fallback to file size if ContentLength is not set
-	if resp.ContentLength < 0 {
-		resp.ContentLength = info.Size()
-	}
-
 	resp.Body = &bodyWithFile{body: resp.Body, file: f}
 	return resp, info.ModTime(), nil
 }
