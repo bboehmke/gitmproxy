@@ -231,8 +231,8 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 		return origResp, err
 	}
 
-	// handle cache control headers
-	if !c.config.IgnoreServerCacheControl {
+	// handle cache control headers (but only if not StatusNotModified)
+	if !c.config.IgnoreServerCacheControl && origResp.StatusCode != http.StatusNotModified {
 		reasons, _, err := cacheobject.UsingRequestResponse(req, origResp.StatusCode, origResp.Header, false)
 		if err != nil {
 			if c.config.EnableLogging {
