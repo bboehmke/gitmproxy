@@ -7,6 +7,7 @@ require (
 	github.com/AdguardTeam/gomitmproxy v0.2.1
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/dustin/go-humanize v1.0.1
+	github.com/pquerna/cachecontrol v0.2.0
 	github.com/prometheus/client_golang v1.22.0
 )
 

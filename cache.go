@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/AdguardTeam/golibs/log"
+	"github.com/pquerna/cachecontrol/cacheobject"
 )
 
 // DiskCache represents an HTTP response cache that stores entries on the file system, grouped by hostname.
@@ -232,14 +233,18 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 
 	// handle cache control headers
 	if !c.config.IgnoreServerCacheControl {
-		cacheControl := origResp.Header.Get("Cache-Control")
-		if cacheControl != "" {
-			if strings.Contains(cacheControl, "no-cache") || strings.Contains(cacheControl, "no-store") || strings.Contains(cacheControl, "max-age=0") {
-				if c.config.EnableLogging {
-					log.Printf("cache control ignore: %s %s", req.Method, req.URL.String())
-				}
-				return origResp, err
+		reasons, _, err := cacheobject.UsingRequestResponse(req, origResp.StatusCode, origResp.Header, false)
+		if err != nil {
+			if c.config.EnableLogging {
+				log.Printf("cache control error: %s %s: %v", req.Method, req.URL.String(), err)
 			}
+			return origResp, err
+		}
+		if len(reasons) > 0 {
+			if c.config.EnableLogging {
+				log.Printf("cache control ignore: %s %s: %v", req.Method, req.URL.String(), reasons)
+			}
+			return origResp, nil // do not cache this response
 		}
 	}
 
