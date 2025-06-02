@@ -61,6 +61,9 @@ func main() {
 	// Create an HTTP client with the disk cache transport
 	client := http.Client{
 		Transport: diskCache,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 
 	// resolve TCP address for the proxy to listen on
