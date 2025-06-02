@@ -225,7 +225,8 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 
 	// Download the response body
 	origResp, err := c.transport.RoundTrip(req)
-	if err != nil || origResp == nil {
+	// on error or non 200/304 response, return immediately
+	if err != nil || origResp == nil || (origResp.StatusCode != http.StatusOK && origResp.StatusCode != http.StatusNotModified) {
 		return origResp, err
 	}
 
