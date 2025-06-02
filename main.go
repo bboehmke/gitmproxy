@@ -52,7 +52,8 @@ func main() {
 	// Initialize the disk cache
 	diskCache, err := NewDiskCache(config,
 		&http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig:    &tls.Config{InsecureSkipVerify: true},
+			DisableCompression: true,
 		})
 	if err != nil {
 		log.Fatal(err)
