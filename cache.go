@@ -231,7 +231,7 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 
 	// handle cache control headers
 	if !c.config.IgnoreServerCacheControl {
-		cacheControl := req.Header.Get("Cache-Control")
+		cacheControl := origResp.Header.Get("Cache-Control")
 		if cacheControl != "" {
 			if strings.Contains(cacheControl, "no-cache") || strings.Contains(cacheControl, "no-store") || strings.Contains(cacheControl, "max-age=0") {
 				if c.config.EnableLogging {
