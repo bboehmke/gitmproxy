@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/AdguardTeam/golibs/log"
+	"github.com/dustin/go-humanize"
 	"github.com/pquerna/cachecontrol/cacheobject"
 )
 
@@ -101,6 +102,12 @@ func (c *DiskCache) Get(req *http.Request) (*http.Response, time.Time, error) {
 		f.Close()
 		return nil, time.Time{}, err
 	}
+
+	// fallback to file size if ContentLength is not set
+	if resp.ContentLength < 0 {
+		resp.ContentLength = info.Size()
+	}
+
 	resp.Body = &bodyWithFile{body: resp.Body, file: f}
 	return resp, info.ModTime(), nil
 }
@@ -267,7 +274,7 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 		}
 
 		if c.config.EnableLogging {
-			log.Printf("cache MISS: %s %s", req.Method, req.URL.String())
+			log.Printf("cache MISS: %s %s %s", req.Method, req.URL.String(), humanize.Bytes(uint64(origResp.ContentLength+1)))
 		}
 		_ = c.Set(req, origResp)
 	}
@@ -304,7 +311,7 @@ func (c *DiskCache) RoundTrip(req *http.Request) (*http.Response, error) {
 
 			} else {
 				if c.config.EnableLogging {
-					log.Printf("cache HIT: %s %s", req.Method, req.URL.String())
+					log.Printf("cache HIT: %s %s %s", req.Method, req.URL.String(), humanize.Bytes(uint64(resp.ContentLength+1)))
 				}
 				mCacheRequestsTotal.Inc()
 				mCacheRequestsHitTotal.Inc()
