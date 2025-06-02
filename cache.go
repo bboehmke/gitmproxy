@@ -284,26 +284,28 @@ func (c *DiskCache) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		// cacheEntryTTL check: if configured and file is too old, treat as miss
-		// also set etag of old request to If-None-Match header
-		if c.config.EntryTTL > 0 && time.Since(updateTime) > c.config.EntryTTL {
-			if c.config.EnableLogging {
-				log.Info("cache EXPIRED: %s (expired %v ago, cacheEntryTTL %v)", req.URL.String(), time.Since(updateTime), c.config.EntryTTL)
-			}
-			// pass etag to request if available
-			if resp.Header.Get("ETag") != "" {
-				req.Header.Set("If-None-Match", resp.Header.Get("ETag"))
-			}
+		if resp != nil {
+			// cacheEntryTTL check: if configured and file is too old, treat as miss
+			// also set etag of old request to If-None-Match header
+			if c.config.EntryTTL > 0 && time.Since(updateTime) > c.config.EntryTTL {
+				if c.config.EnableLogging {
+					log.Info("cache EXPIRED: %s (expired %v ago, cacheEntryTTL %v)", req.URL.String(), time.Since(updateTime), c.config.EntryTTL)
+				}
+				// pass etag to request if available
+				if resp.Header.Get("ETag") != "" {
+					req.Header.Set("If-None-Match", resp.Header.Get("ETag"))
+				}
 
-		} else if resp != nil {
-			if c.config.EnableLogging {
-				log.Printf("cache HIT: %s %s", req.Method, req.URL.String())
+			} else {
+				if c.config.EnableLogging {
+					log.Printf("cache HIT: %s %s", req.Method, req.URL.String())
+				}
+				mCacheRequestsTotal.Inc()
+				mCacheRequestsBytes.Add(float64(resp.ContentLength))
+				mCacheRequestsHitTotal.Inc()
+				mCacheRequestsHitBytes.Add(float64(resp.ContentLength))
+				return resp, nil
 			}
-			mCacheRequestsTotal.Inc()
-			mCacheRequestsBytes.Add(float64(resp.ContentLength))
-			mCacheRequestsHitTotal.Inc()
-			mCacheRequestsHitBytes.Add(float64(resp.ContentLength))
-			return resp, nil
 		}
 
 		c.downloadMu.Lock()
