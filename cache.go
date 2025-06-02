@@ -301,9 +301,11 @@ func (c *DiskCache) RoundTrip(req *http.Request) (*http.Response, error) {
 					log.Printf("cache HIT: %s %s", req.Method, req.URL.String())
 				}
 				mCacheRequestsTotal.Inc()
-				mCacheRequestsBytes.Add(float64(resp.ContentLength))
 				mCacheRequestsHitTotal.Inc()
-				mCacheRequestsHitBytes.Add(float64(resp.ContentLength))
+				if resp.ContentLength > 0 {
+					mCacheRequestsBytes.Add(float64(resp.ContentLength))
+					mCacheRequestsHitBytes.Add(float64(resp.ContentLength))
+				}
 				return resp, nil
 			}
 		}
@@ -322,9 +324,11 @@ func (c *DiskCache) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp, err = c.doSingleflightDownload(req, inflightKey, wg)
 		if err == nil {
 			mCacheRequestsTotal.Inc()
-			mCacheRequestsBytes.Add(float64(resp.ContentLength))
 			mCacheRequestsMissTotal.Inc()
-			mCacheRequestsMissBytes.Add(float64(resp.ContentLength))
+			if resp.ContentLength > 0 {
+				mCacheRequestsBytes.Add(float64(resp.ContentLength))
+				mCacheRequestsMissBytes.Add(float64(resp.ContentLength))
+			}
 		}
 		return resp, err
 	}
