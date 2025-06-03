@@ -64,6 +64,31 @@ func writeResponseToTmpFile(tmpPath string, resp *http.Response) (int64, error) 
 	return cw.count, nil
 }
 
+// countingReadCloser wraps an io.ReadCloser and counts bytes read.
+type countingReadCloser struct {
+	rc    io.ReadCloser
+	isHit bool // true if cache hit, false if miss
+}
+
+// Read reads data from the underlying ReadCloser and counts the number of bytes read.
+func (c *countingReadCloser) Read(p []byte) (int, error) {
+	n, err := c.rc.Read(p)
+	if n > 0 {
+		mCacheRequestsBytes.Add(float64(n))
+		if c.isHit {
+			mCacheRequestsHitBytes.Add(float64(n))
+		} else {
+			mCacheRequestsMissBytes.Add(float64(n))
+		}
+	}
+	return n, err
+}
+
+// Close closes the underlying ReadCloser.
+func (c *countingReadCloser) Close() error {
+	return c.rc.Close()
+}
+
 // ResponseWriter is a custom http.ResponseWriter that captures the response headers and body.
 type ResponseWriter struct {
 	header http.Header
