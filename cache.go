@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/hex"
+	"fmt"
 	"hash/fnv"
 	"net/http"
 	"os"
@@ -81,12 +82,12 @@ func (c *DiskCache) cachePath(req *http.Request) string {
 }
 
 // Get returns a cached http.Response if present, else nil. Honors cacheEntryTTL if set.
-func (c *DiskCache) Get(req *http.Request) (*http.Response, time.Time, error) {
+func (c *DiskCache) Get(req *http.Request) (*http.Response, os.FileInfo, error) {
 	path := c.cachePath(req)
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, time.Time{}, nil // cache miss
+		return nil, info, nil // cache miss
 	}
 
 	// Touch the file's atime to update LRU (best-effort), but do NOT update mtime!
@@ -95,16 +96,16 @@ func (c *DiskCache) Get(req *http.Request) (*http.Response, time.Time, error) {
 
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, time.Time{}, nil // treat as cache miss
+		return nil, info, nil // treat as cache miss
 	}
 	resp, err := http.ReadResponse(bufio.NewReader(f), req)
 	if err != nil {
 		f.Close()
-		return nil, time.Time{}, err
+		return nil, info, err
 	}
 
 	resp.Body = &bodyWithFile{body: resp.Body, file: f}
-	return resp, info.ModTime(), nil
+	return resp, info, nil
 }
 
 // Set stores the HTTP response in the cache. Only stores status, headers, and body.
@@ -228,10 +229,11 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 
 	// Download the response body
 	origResp, err := c.transport.RoundTrip(req)
-	// on error or non 200/304 response, return immediately
-	if err != nil || origResp == nil || (origResp.StatusCode != http.StatusOK && origResp.StatusCode != http.StatusNotModified) {
+	// return on error
+	if err != nil || origResp == nil {
 		return origResp, err
 	}
+	defer origResp.Body.Close()
 
 	// handle cache control headers (but only if not StatusNotModified)
 	if !c.config.IgnoreServerCacheControl && origResp.StatusCode != http.StatusNotModified {
@@ -248,16 +250,20 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 			}
 			return origResp, nil // do not cache this response
 		}
-	}
 
-	// if response indicates not modified, update modification time
-	if origResp.StatusCode == http.StatusNotModified {
+		// if response indicates not modified, update modification time
+	} else if origResp.StatusCode == http.StatusNotModified {
 		now := time.Now()
 		_ = os.Chtimes(c.cachePath(req), now, now)
 
-		if c.config.EnableLogging {
-			log.Printf("cache MISS-UP: %s %s", req.Method, req.URL.String())
+		response, info, err := c.Get(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get cache entry: %w", err)
 		}
+		if c.config.EnableLogging {
+			log.Printf("cache MISS-UP: %s %s %s", req.Method, req.URL.String(), humanize.Bytes(uint64(info.Size())))
+		}
+		return response, nil
 	} else {
 		// Only check the limit if ContentLength is given (>= 0).
 		if c.config.EntryMaxSize > 0 && origResp.ContentLength > int64(c.config.EntryMaxSize) && origResp.ContentLength >= 0 {
@@ -268,15 +274,23 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 			return origResp, nil
 		}
 
-		if c.config.EnableLogging {
-			log.Printf("cache MISS: %s %s %s", req.Method, req.URL.String(), humanize.Bytes(uint64(origResp.ContentLength+1)))
+		// update cache with the response
+		err = c.Set(req, origResp)
+		if err != nil {
+			return nil, fmt.Errorf("cache set error: %w", err)
 		}
-		_ = c.Set(req, origResp)
+
+		response, info, err := c.Get(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get cache entry: %w", err)
+		}
+		if c.config.EnableLogging {
+			log.Printf("cache MISS: %s %s %s", req.Method, req.URL.String(), humanize.Bytes(uint64(info.Size())))
+		}
+		return response, nil
 	}
 
-	origResp.Body.Close()
-	response, _, err := c.Get(req)
-	return response, nil
+	return origResp, nil
 }
 
 // RoundTrip implements http.RoundTripper. Only GET requests are cached.
@@ -288,16 +302,16 @@ func (c *DiskCache) RoundTrip(req *http.Request) (*http.Response, error) {
 	inflightKey := req.URL.String()
 
 	for {
-		resp, updateTime, err := c.Get(req)
+		resp, info, err := c.Get(req)
 		if err != nil {
 			return nil, err
 		}
 		if resp != nil {
 			// cacheEntryTTL check: if configured and file is too old, treat as miss
 			// also set etag of old request to If-None-Match header
-			if c.config.EntryTTL > 0 && time.Since(updateTime) > c.config.EntryTTL {
+			if c.config.EntryTTL > 0 && time.Since(info.ModTime()) > c.config.EntryTTL {
 				if c.config.EnableLogging {
-					log.Info("cache EXPIRED: %s (expired %v ago, cacheEntryTTL %v)", req.URL.String(), time.Since(updateTime), c.config.EntryTTL)
+					log.Info("cache EXPIRED: %s (expired %v ago, cacheEntryTTL %v)", req.URL.String(), time.Since(info.ModTime()), c.config.EntryTTL)
 				}
 				// pass etag to request if available
 				if resp.Header.Get("ETag") != "" {
@@ -306,7 +320,7 @@ func (c *DiskCache) RoundTrip(req *http.Request) (*http.Response, error) {
 
 			} else {
 				if c.config.EnableLogging {
-					log.Printf("cache HIT: %s %s %s", req.Method, req.URL.String(), humanize.Bytes(uint64(resp.ContentLength+1)))
+					log.Printf("cache HIT: %s %s %s", req.Method, req.URL.String(), humanize.Bytes(uint64(info.Size())))
 				}
 				mCacheRequestsTotal.Inc()
 				mCacheRequestsHitTotal.Inc()
