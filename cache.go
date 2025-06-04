@@ -233,7 +233,6 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 	if err != nil || origResp == nil {
 		return origResp, err
 	}
-	defer origResp.Body.Close()
 
 	// handle cache control headers (but only if not StatusNotModified)
 	if !c.config.IgnoreServerCacheControl && origResp.StatusCode != http.StatusNotModified {
@@ -250,9 +249,10 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 			}
 			return origResp, nil // do not cache this response
 		}
+	}
 
-		// if response indicates not modified, update modification time
-	} else if origResp.StatusCode == http.StatusNotModified {
+	// if response indicates not modified, update modification time
+	if origResp.StatusCode == http.StatusNotModified {
 		now := time.Now()
 		_ = os.Chtimes(c.cachePath(req), now, now)
 
@@ -276,6 +276,7 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 
 		// update cache with the response
 		err = c.Set(req, origResp)
+		origResp.Body.Close()
 		if err != nil {
 			return nil, fmt.Errorf("cache set error: %w", err)
 		}
@@ -289,8 +290,6 @@ func (c *DiskCache) doSingleflightDownload(req *http.Request, inflightKey string
 		}
 		return response, nil
 	}
-
-	return origResp, nil
 }
 
 // RoundTrip implements http.RoundTripper. Only GET requests are cached.
