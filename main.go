@@ -60,8 +60,18 @@ func main() {
 	}
 
 	// Create an HTTP client with the disk cache transport
-	client := http.Client{
+	cacheClient := http.Client{
 		Transport: diskCache,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// Create an HTTP client without caching
+	noCacheClient := http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -83,6 +93,9 @@ func main() {
 
 		OnRequest: func(session *gomitmproxy.Session) (*http.Request, *http.Response) {
 			req := session.Request()
+			if req.Method == http.MethodConnect {
+				return nil, nil
+			}
 
 			// handle metrics endpoint
 			if req.URL.Path == "/_gitmproxy_metrics" {
@@ -99,15 +112,17 @@ func main() {
 
 			// count HTTP requests
 			mHttpRequestsTotal.WithLabelValues(req.Method).Add(1)
-
-			// handle only GET requests
-			if req.Method != http.MethodGet {
-				return nil, nil
-			}
 			req.RequestURI = ""
 
-			// handle caching
-			response, err := client.Do(req)
+			var response *http.Response
+			// cache only GET requests
+			if req.Method == http.MethodGet {
+				response, err = cacheClient.Do(req)
+			} else {
+				response, err = noCacheClient.Do(req)
+			}
+
+			// handle errors from the HTTP client
 			if err != nil {
 				body := strings.NewReader(err.Error())
 				res := proxyutil.NewResponse(http.StatusInternalServerError, body, req)
